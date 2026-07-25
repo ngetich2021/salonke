@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>You're offline — SalonKE</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f6f6f7;
+        color: #171717;
+        text-align: center;
+        padding: 24px;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #09090b; color: #ededed; }
+      }
+      .card { max-width: 360px; }
+      h1 { font-size: 1.1rem; margin: 0 0 8px; }
+      p { font-size: 0.9rem; opacity: 0.7; margin: 0 0 20px; }
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        background: #7c3aed;
+        color: white;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>You're offline</h1>
+      <p>SalonKE needs a connection to load salons, shops, and orders. Reconnect and try again.</p>
+      <button onclick="location.reload()">Try again</button>
+    </div>
+  </body>
+</html>

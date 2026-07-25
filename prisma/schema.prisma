@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// --- Auth.js (NextAuth) models ---
+
+enum Role {
+  CUSTOMER
+  BRAND
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(CUSTOMER)
+  phone         String?
+  latitude      Float?
+  longitude     Float?
+  customRoleId  String?
+  createdAt     DateTime  @default(now())
+
+  accounts        Account[]
+  sessions        Session[]
+  ownedSalons     Salon[]          @relation("SalonOwner")
+  ownedShops      Shop[]           @relation("ShopOwner")
+  orders          Order[]
+  roleRequests    RoleRequest[]
+  adverts         Advert[]
+  advertInterests AdvertInterest[]
+  advertShares    AdvertShare[]
+  payments        Payment[]
+  verificationRequests VerificationRequest[]
+  issueReports    IssueReport[]
+  customRole      CustomRole?      @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+}
+
+// Admin-defined staff titles (e.g. "Customer care", "Accountant") that grant
+// read-only access to specific admin panel sections without the full ADMIN role.
+model CustomRole {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  canViewUsers  Boolean  @default(false)
+  canViewSalons Boolean  @default(false)
+  canViewShops  Boolean  @default(false)
+  canViewOrders Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  users User[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- Salon Beauty Portal domain models ---
+
+model Salon {
+  id             String   @id @default(cuid())
+  ownerId        String?
+  name           String
+  contactName    String
+  centreName     String
+  description    String?
+  phone          String
+  phone2         String?
+  tiktokUrl      String?
+  whatsappNumber String?
+  imageUrl       String?
+  latitude       Float
+  longitude      Float
+  // Admins can only suspend/unsuspend a listing, never delete it outright —
+  // deletion only becomes available once it's been suspended for 3+ months
+  // (see lib/suspension.ts). Suspended listings are hidden from customer
+  // search (getNearbySalons) but remain visible to their owner.
+  suspended      Boolean   @default(false)
+  suspendedAt    DateTime?
+  // Set once an admin approves a paid VerificationRequest for this listing
+  // (see lib/verification.ts) — shown as a badge to customers. Independent
+  // of suspended: a verified listing can still be suspended, and vice versa.
+  verified       Boolean   @default(false)
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  owner                User?                 @relation("SalonOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  services             Service[]
+  verificationRequests VerificationRequest[]
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  salonId     String
+  name        String
+  description String
+  priceKes    Int
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+
+  salon  Salon   @relation(fields: [salonId], references: [id], onDelete: Cascade)
+  orders Order[]
+}
+
+model Shop {
+  id             String   @id @default(cuid())
+  ownerId        String?
+  name           String
+  phone          String?
+  tiktokUrl      String?
+  whatsappNumber String?
+  imageUrl       String?
+  latitude       Float
+  longitude      Float
+  // See Salon.suspended above — same admin suspend/unsuspend-only lifecycle.
+  suspended      Boolean   @default(false)
+  suspendedAt    DateTime?
+  // See Salon.verified above — same paid-verification lifecycle.
+  verified       Boolean   @default(false)
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  owner                User?                 @relation("ShopOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  products             Product[]
+  verificationRequests VerificationRequest[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  shopId      String
+  name        String
+  description String
+  priceKes    Int
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+
+  shop   Shop    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orders Order[]
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  customerId String
+  serviceId  String?
+  productId  String?
+  // Set when this order originated from an advert's "Interested" shop-match
+  // flow, so ad-campaign effectiveness (orders + revenue per advert) can be
+  // reported without touching the customer-initiated ordering path at all.
+  advertId   String?
+  quantity   Int         @default(1)
+  amountKes  Int
+  status     OrderStatus @default(PENDING)
+  // Customer's location at order time — only ever populated for advert-
+  // attributed orders (see advertId above), for the same campaign reporting.
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime    @default(now())
+
+  customer User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  service  Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  advert   Advert?  @relation(fields: [advertId], references: [id], onDelete: SetNull)
+}
+
+enum RoleRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model RoleRequest {
+  id          String            @id @default(cuid())
+  userId      String
+  role        Role
+  status      RoleRequestStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  respondedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum AdvertStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum AdvertReach {
+  LOCAL
+  GLOBAL
+}
+
+// Lightweight product ad (video + name) anyone can post without owning a
+// shop. LOCAL ads use the owner's own location (optionally capped to
+// radiusKm); GLOBAL ads match any search regardless of location. Goes live
+// for customers only once an admin approves it.
+model Advert {
+  id          String       @id @default(cuid())
+  ownerId     String
+  productName String
+  description String?
+  videoUrl    String
+  // Contact number shown to viewers for this specific ad — collected at
+  // submission rather than read off User.phone, since an advertiser's
+  // per-campaign contact point can differ from (or outlive changes to)
+  // their account phone. Nullable only because rows created before this
+  // field existed have no value to backfill.
+  phone       String?
+  status      AdvertStatus @default(PENDING)
+  reach       AdvertReach  @default(LOCAL)
+  radiusKm    Float?
+  searchCount Int          @default(0)
+  // Paid rotation package (see lib/pricing.ts / lib/campaign.ts). repeatCount
+  // is how many *extra* appearances per loop cycle beyond the base one;
+  // packageDays is how many days that was paid for. The clock
+  // (campaignStartsAt/campaignExpiresAt) only starts once this advert is
+  // first APPROVED — not at payment time — so review-queue delays never eat
+  // into paid days. A renewal payment extends campaignExpiresAt without
+  // touching status (no re-review). "Paused" is simply
+  // campaignExpiresAt < now, computed on read rather than stored.
+  repeatCount       Int       @default(0)
+  packageDays       Int?
+  campaignStartsAt  DateTime?
+  campaignExpiresAt DateTime?
+  // Human-facing reference number (101, 102, ...) shown to viewers/admins so
+  // a broken video can be reported/fixed by number instead of by cuid. Set
+  // explicitly in createAdvertAction (max existing + 1, or 101 if none),
+  // not a DB autoincrement — SQLite only supports that on the @id column,
+  // and Advert's @id is a cuid string, not an integer.
+  serial      Int?         @unique
+  createdAt   DateTime     @default(now())
+
+  owner      User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  interests  AdvertInterest[]
+  orders     Order[]
+  shares     AdvertShare[]
+  dailyViews AdvertDailyView[]
+  payments   Payment[]
+}
+
+// One row per site-wide calendar day (UTC), incremented once per page view —
+// powers the admin-only "site visitors by day" analytics panel. A single
+// upserted counter row per day rather than one row per visit, since only the
+// daily total is ever needed.
+model DailyVisit {
+  date  String @id
+  count Int    @default(0)
+}
+
+// Same per-day counter shape as DailyVisit, scoped to a single advert —
+// incremented once per day each time that advert becomes the one showing in
+// the media player. Powers the advertiser-facing "your ad's visitors by day"
+// panel (and lets admins drill into a single advert's traffic too).
+model AdvertDailyView {
+  id       String @id @default(cuid())
+  advertId String
+  date     String
+  count    Int    @default(0)
+
+  advert Advert @relation(fields: [advertId], references: [id], onDelete: Cascade)
+
+  @@unique([advertId, date])
+}
+
+// One row per share action (native share sheet or a platform link/copy
+// click) — `clickCount` counts how many times the resulting tracked link
+// (?ad=<advertId>&ref=<this id>) was actually opened by someone else,
+// letting "shared" (attempted) be told apart from "shared fully" (reached
+// someone). Deleted along with its advert, same reasoning as AdvertInterest.
+model AdvertShare {
+  id         String   @id @default(cuid())
+  advertId   String
+  userId     String?
+  platform   String
+  clickCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  advert Advert @relation(fields: [advertId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// One row per "Interested" click — powers the admin campaign-effectiveness
+// view (interest count / order count / revenue per advert). Deleted along
+// with its advert (unlike Order.advertId, which survives advert deletion):
+// once the advert is gone there's nothing left for this row to report on.
+model AdvertInterest {
+  id         String   @id @default(cuid())
+  advertId   String
+  userId     String?
+  latitude   Float?
+  longitude  Float?
+  distanceKm Float?
+  createdAt  DateTime @default(now())
+
+  advert Advert @relation(fields: [advertId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+enum PaymentPurpose {
+  VERIFICATION
+  AD_CAMPAIGN
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// One row per M-Pesa STK push attempt (see lib/mpesa.ts), backing both the
+// salon/shop verification fee and ad-campaign payments — a single ledger
+// rather than two parallel ones, since both are "pay via STK push, then
+// something happens on confirmation." checkoutRequestId is Daraja's
+// correlation key: app/api/mpesa/callback/route.ts looks a Payment up by it
+// when the async confirmation arrives. advertId uses onDelete: SetNull (like
+// Order.advertId) so a financial ledger row survives the advert it funded
+// being deleted later.
+model Payment {
+  id                 String         @id @default(cuid())
+  userId             String
+  purpose            PaymentPurpose
+  amountKes          Int
+  status             PaymentStatus  @default(PENDING)
+  phone              String
+  checkoutRequestId  String?        @unique
+  merchantRequestId  String?
+  mpesaReceiptNumber String?
+  resultCode         Int?
+  resultDesc         String?
+  confirmedAt        DateTime?
+  createdAt          DateTime       @default(now())
+  advertId           String?
+
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advert              Advert?              @relation(fields: [advertId], references: [id], onDelete: SetNull)
+  verificationRequest VerificationRequest?
+}
+
+enum VerificationStatus {
+  AWAITING_PAYMENT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Owner-initiated, admin-reviewed verification request for a Salon or Shop —
+// same "owner action -> admin lifecycle flag" shape as suspended/suspendedAt
+// (see lib/suspension.ts), gated by a paid step first. Exactly one of
+// salonId/shopId is set, same dual-optional-FK convention Order already uses
+// for serviceId/productId. Stays AWAITING_PAYMENT (invisible to admin) until
+// the linked Payment succeeds, so an unpaid/failed attempt never clutters
+// the review queue.
+model VerificationRequest {
+  id            String              @id @default(cuid())
+  salonId       String?
+  shopId        String?
+  requestedById String
+  documentUrl   String
+  phone         String
+  status        VerificationStatus  @default(AWAITING_PAYMENT)
+  reviewNote    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  paymentId     String              @unique
+
+  salon       Salon?  @relation(fields: [salonId], references: [id], onDelete: Cascade)
+  shop        Shop?   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation(fields: [requestedById], references: [id], onDelete: Cascade)
+  payment     Payment @relation(fields: [paymentId], references: [id])
+}
+
+enum IssueReportStatus {
+  OPEN
+  RESOLVED
+}
+
+// Anyone can file one — no account required (reporterId is nullable and
+// SetNull on delete, same shape as AdvertInterest/AdvertShare's optional
+// userId, so a submitted report outlives the reporter's account either way).
+// The only admin-only lever is `status`, toggled from the admin panel once
+// a report's been dealt with.
+model IssueReport {
+  id         String            @id @default(cuid())
+  reporterId String?
+  name       String?
+  email      String?
+  message    String
+  pageUrl    String?
+  status     IssueReportStatus @default(OPEN)
+  createdAt  DateTime          @default(now())
+
+  reporter User? @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+}
