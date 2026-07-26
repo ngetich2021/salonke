@@ -19,11 +19,6 @@ function isIos() {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-// Fixed, always-visible install affordance — bottom-right on every page,
-// above everything except the sticky ad player (z-40) and header (z-50), so
-// it never gets buried in page content but also never fights the chrome
-// that's already claiming the top of the screen.
-//
 // Chrome/Edge/Android fire `beforeinstallprompt` when the PWA install
 // criteria (manifest + service worker + HTTPS) are met — that event is the
 // *only* way to trigger the native install prompt, and it's only usable
@@ -31,17 +26,23 @@ function isIos() {
 // be captured and held in state rather than re-requested on click. iOS
 // Safari never fires this event at all (there's no programmatic install API
 // there — "Add to Home Screen" is a manual step under the native Share
-// sheet), so that path gets its own instruction bubble instead of a prompt.
-export function InstallAppButton() {
+// sheet). And even on Chrome/Edge, the event is heuristic-gated (engagement
+// signals, a prior dismissal cooldown) so it may simply not have fired yet
+// on a given visit — that's not an error state, just "not offered by the
+// browser this time". `installable` therefore stays true any time the app
+// isn't already installed, so the entry point itself (e.g. a nav link) is
+// always visible instead of flickering in and out with browser heuristics;
+// callers fall back to their own instruction UI whenever `promptInstall`
+// resolves "ios" or "manual".
+export function useInstallPrompt() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   // Lazy initializers run once during the client's first render, before any
   // effect — computing these here (rather than via setState inside an
-  // effect body) avoids an extra render pass and the flash of a button that
+  // effect body) avoids an extra render pass and the flash of a control that
   // immediately hides itself. `typeof window` guards the SSR pass, where
   // neither check has anything to read yet.
   const [installed, setInstalled] = useState(() => typeof window !== "undefined" && isStandalone());
   const [iosEligible] = useState(() => typeof window !== "undefined" && isIos());
-  const [showIosHint, setShowIosHint] = useState(false);
 
   useEffect(() => {
     if (installed) return;
@@ -63,35 +64,19 @@ export function InstallAppButton() {
     };
   }, [installed]);
 
-  if (installed) return null;
-  if (!installEvent && !iosEligible) return null;
+  const installable = !installed;
 
-  async function handleClick() {
+  async function promptInstall(): Promise<"accepted" | "dismissed" | "ios" | "manual"> {
     if (installEvent) {
       await installEvent.prompt();
       const { outcome } = await installEvent.userChoice;
       if (outcome === "accepted") setInstalled(true);
       setInstallEvent(null);
-      return;
+      return outcome;
     }
-    setShowIosHint((v) => !v);
+    if (iosEligible) return "ios";
+    return "manual";
   }
 
-  return (
-    <div className="fixed bottom-4 right-4 z-30 flex flex-col items-end gap-2">
-      {showIosHint && (
-        <div className="max-w-56 rounded-xl border border-black/[.08] bg-white p-3 text-xs shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
-          Tap <span className="font-semibold">Share</span> in Safari, then{" "}
-          <span className="font-semibold">Add to Home Screen</span>.
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={handleClick}
-        className="flex items-center gap-2 rounded-full bg-foreground px-4 py-2.5 text-xs font-medium text-background shadow-lg"
-      >
-        ⬇ Install App
-      </button>
-    </div>
-  );
+  return { installable, promptInstall };
 }

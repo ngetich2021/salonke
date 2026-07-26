@@ -2,6 +2,8 @@ import { getBrandOverview } from "@/lib/dashboard";
 import { OrderStatusActions } from "@/components/dashboard/OrderStatusActions";
 import { DataTable } from "@/components/DataTable";
 import { BrandStatsTabs } from "@/components/dashboard/BrandStatsTabs";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { isVerificationActive } from "@/lib/verification";
 
 export async function BrandStats({ ownerId }: { ownerId: string }) {
   const { salons, shops, orders, totalRevenueKes } = await getBrandOverview(ownerId);
@@ -31,7 +33,8 @@ export async function BrandStats({ ownerId }: { ownerId: string }) {
           className="rounded-lg border border-black/[.08] p-3 dark:border-white/[.145]"
         >
           <p className="font-medium">
-            {s.name}{" "}
+            {s.name}
+            {isVerificationActive(s) && <VerifiedBadge />}{" "}
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
               (Salon)
             </span>
@@ -47,7 +50,8 @@ export async function BrandStats({ ownerId }: { ownerId: string }) {
           className="rounded-lg border border-black/[.08] p-3 dark:border-white/[.145]"
         >
           <p className="font-medium">
-            {s.name}{" "}
+            {s.name}
+            {isVerificationActive(s) && <VerifiedBadge />}{" "}
             <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
               (Shop)
             </span>

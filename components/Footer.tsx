@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PhoneButton } from "@/components/PhoneButton";
 
 export function Footer() {
@@ -8,12 +9,12 @@ export function Footer() {
         <PhoneButton phone="0704 876 954" className="underline underline-offset-2" />
       </p>
       <p className="flex items-center gap-3">
-        <a href="/terms" className="underline underline-offset-2">
+        <Link href="/terms" className="underline underline-offset-2">
           Terms and Conditions
-        </a>
-        <a href="/report" className="underline underline-offset-2">
+        </Link>
+        <Link href="/report" className="underline underline-offset-2">
           Report an issue
-        </a>
+        </Link>
       </p>
     </footer>
   );

@@ -4,21 +4,29 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { requestVerificationAction } from "@/lib/actions";
 import { PaymentPoller } from "@/components/PaymentPoller";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { VERIFICATION_FEE_KES } from "@/lib/pricing";
+import { VERIFICATION_PERIOD_DAYS } from "@/lib/verification-shared";
 
 export type VerificationListing = {
   type: "salon" | "shop";
   id: string;
   name: string;
-  verified: boolean;
-  verifiedAt: Date | null;
-  // Payment confirms verification directly (see markVerificationPaymentPaid)
-  // — the only other state a listing can be in is "payment still in
-  // flight," so this is really just an in-progress flag, not a full status.
+  // Whether the badge is eligible to show right now (isVerificationActive)
+  // — not the raw `verified` column, which stays true forever once set and
+  // says nothing about whether the current paid period has actually lapsed.
+  active: boolean;
+  verificationExpiresAt: Date | null;
+  // True only while the latest request's Payment is still PENDING (STK push
+  // sent, no result yet) — this is the only thing that should block a new
+  // attempt. A FAILED payment leaves the request row stuck at
+  // AWAITING_PAYMENT forever (see requestVerificationAction), so that alone
+  // can't be treated as "in progress" or a retry would never be possible.
   awaitingPayment: boolean;
+  paymentFailed: boolean;
 };
 
-function SubmitButton() {
+function SubmitButton({ renewing }: { renewing: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -26,20 +34,46 @@ function SubmitButton() {
       disabled={pending}
       className="self-start rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Submitting…" : `Pay Kes ${VERIFICATION_FEE_KES} and submit`}
+      {pending
+        ? "Submitting…"
+        : renewing
+          ? `Pay Kes ${VERIFICATION_FEE_KES} to extend ${VERIFICATION_PERIOD_DAYS} more days`
+          : `Pay Kes ${VERIFICATION_FEE_KES} for ${VERIFICATION_PERIOD_DAYS} days`}
     </button>
   );
 }
 
-function ListingRequestForm({ listing, initialPhone }: { listing: VerificationListing; initialPhone: string | null }) {
+function ListingRequestForm({
+  listing,
+  initialPhone,
+}: {
+  listing: VerificationListing;
+  initialPhone: string | null;
+}) {
   const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [settled, setSettled] = useState<"failed" | "timeout" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (paymentId) {
     return (
       <div className="flex flex-col gap-2 text-sm">
         <p>Requesting Kes {VERIFICATION_FEE_KES} via M-Pesa — check your phone.</p>
-        <PaymentPoller paymentId={paymentId} />
+        <PaymentPoller
+          paymentId={paymentId}
+          onSettle={(state) => setSettled(state === "success" ? null : state)}
+        />
+        {settled && (
+          <button
+            type="button"
+            onClick={() => {
+              setPaymentId(null);
+              setSettled(null);
+            }}
+            className="self-start text-xs font-medium underline"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
   }
@@ -73,21 +107,21 @@ function ListingRequestForm({ listing, initialPhone }: { listing: VerificationLi
 
       {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
 
-      <SubmitButton />
+      <SubmitButton renewing={listing.active} />
     </form>
   );
 }
 
 function ListingStatus({ listing }: { listing: VerificationListing }) {
-  if (listing.verified) {
+  if (listing.active) {
     return (
       <p className="flex items-center gap-2 text-sm">
         <span className="rounded-full bg-purple-600 px-2 py-0.5 text-xs font-semibold text-white">
           ✓ Verified
         </span>
-        {listing.verifiedAt && (
+        {listing.verificationExpiresAt && (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            since {listing.verifiedAt.toLocaleDateString()}
+            until {listing.verificationExpiresAt.toLocaleDateString()}
           </span>
         )}
       </p>
@@ -97,7 +131,24 @@ function ListingStatus({ listing }: { listing: VerificationListing }) {
   if (listing.awaitingPayment) {
     return (
       <p className="text-xs text-amber-700 dark:text-amber-400">
-        Awaiting your M-Pesa payment to confirm — check your phone, or try again below.
+        Awaiting your M-Pesa payment to confirm — check your phone.
+      </p>
+    );
+  }
+
+  if (listing.paymentFailed) {
+    return (
+      <p className="text-xs text-red-600 dark:text-red-400">
+        Your last verification payment didn&apos;t go through — try again below.
+      </p>
+    );
+  }
+
+  if (listing.verificationExpiresAt) {
+    return (
+      <p className="text-xs text-amber-700 dark:text-amber-400">
+        Your verification lapsed on {listing.verificationExpiresAt.toLocaleDateString()} — renew
+        below to bring the badge back.
       </p>
     );
   }
@@ -119,14 +170,17 @@ export function VerificationSettings({
       <div>
         <h3 className="text-sm font-semibold">Verification</h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Pay a one-time Kes {VERIFICATION_FEE_KES} fee to get a verified badge on your listing —
-          just your phone number, no documents needed.
+          Kes {VERIFICATION_FEE_KES} gets your listing a verified badge for{" "}
+          {VERIFICATION_PERIOD_DAYS} days — just your phone number, no documents needed. It renews
+          only when you pay again; nothing is charged automatically.
         </p>
       </div>
 
       {listings.map((listing) => {
-        // A form only makes sense while there's nothing already in flight.
-        const canSubmit = !listing.verified && !listing.awaitingPayment;
+        // A renewal form makes sense any time — even while already active,
+        // to extend before it lapses — the only thing that blocks it is a
+        // payment already in flight.
+        const canSubmit = !listing.awaitingPayment;
 
         return (
           <div
@@ -134,7 +188,8 @@ export function VerificationSettings({
             className="flex flex-col gap-2 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]"
           >
             <p className="text-sm font-medium">
-              {listing.name}{" "}
+              {listing.name}
+              {listing.active && <VerifiedBadge />}{" "}
               <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
                 ({listing.type})
               </span>

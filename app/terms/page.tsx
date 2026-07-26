@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Panel } from "@/components/Panel";
 import { AD_BASE_RATE_KES, AD_REPEAT_RATE_KES, VERIFICATION_FEE_KES } from "@/lib/pricing";
 import { SUSPENSION_DELETE_ELIGIBLE_DAYS } from "@/lib/suspension";
+import { VERIFICATION_PERIOD_DAYS } from "@/lib/verification";
 
 export const metadata: Metadata = {
   title: "Terms and Conditions — SalonKE",
@@ -72,11 +74,13 @@ export default function TermsPage() {
 
         <Section title="Verification">
           <p>
-            Salon and shop owners can request paid verification for their listing (currently Kes{" "}
-            {VERIFICATION_FEE_KES}) from account settings. A verified listing is reviewed by an
-            admin against the document you submit and, once approved, shows a verified badge. We
-            can revoke a verified badge at any time if the listing is later found to be
-            misrepresented or in violation of these terms.
+            Salon and shop owners can pay for a verified badge on their listing (currently Kes{" "}
+            {VERIFICATION_FEE_KES} per {VERIFICATION_PERIOD_DAYS}-day period) from account
+            settings — payment itself confirms it, no document or review required. It only stays
+            active while paid up; it isn&apos;t charged automatically, so it lapses if not renewed
+            before the period ends. We can revoke a verified badge at any time regardless of a
+            paid period remaining, if the listing is found to be misrepresented or in violation of
+            these terms.
           </p>
         </Section>
 
@@ -104,9 +108,9 @@ export default function TermsPage() {
           <p>
             If something&apos;s wrong — a broken ad, a listing that shouldn&apos;t be up, a bug, or
             anything else — use the{" "}
-            <a href="/report" className="underline">
+            <Link href="/report" className="underline">
               report an issue
-            </a>{" "}
+            </Link>{" "}
             form. Anyone can submit a report, no account required.
           </p>
         </Section>

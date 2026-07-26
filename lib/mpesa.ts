@@ -215,6 +215,18 @@ export async function queryStkStatus(checkoutRequestId: string): Promise<StkCall
   const merchantRequestId = String(data.MerchantRequestID ?? "");
   const resultDesc = String(data.ResultDesc ?? data.ResponseDescription ?? "");
 
+  // Queried too soon (typically the very first poll, seconds after the push,
+  // before the customer has even entered their PIN), Safaricom responds
+  // ResultCode 4999 / "The transaction is still under processing" as an
+  // ordinary HTTP 200 rather than the HTTP error `!res.ok` above catches —
+  // this is "don't know yet," not a failure. Treating it as terminal FAILED
+  // is what let a since-successful payment get stuck FAILED forever: once
+  // applyStkResult writes a non-PENDING status, it no-ops on the real
+  // callback that arrives moments later with the actual outcome.
+  if (resultCode === 4999 || /still.*processing/i.test(resultDesc)) {
+    return null;
+  }
+
   if (resultCode === 0) {
     return {
       checkoutRequestId,

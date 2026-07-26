@@ -23,7 +23,7 @@ export function BrandStatsTabs({
 
   const stats: { key: StatsTab; label: string; value: number }[] = [
     { key: "listings", label: "Listings", value: listingsCount },
-    { key: "orders", label: "Orders", value: ordersCount },
+    { key: "orders", label: "Store orders", value: ordersCount },
     { key: "revenue", label: "Revenue (Kes)", value: totalRevenueKes },
   ];
 

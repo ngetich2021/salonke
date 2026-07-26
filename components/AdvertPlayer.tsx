@@ -17,6 +17,7 @@ import { YouTubePlayer } from "@/components/YouTubePlayer";
 import { FallbackVideoPlayer } from "@/components/FallbackVideoPlayer";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ShareButtons } from "@/components/ShareButtons";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 export type AdvertPlayerItem = {
   id: string;
@@ -29,6 +30,7 @@ export type AdvertPlayerItem = {
 type ShopMatch = {
   shopId: string;
   shopName: string;
+  verified: boolean;
   phone: string | null;
   whatsappNumber: string | null;
   tiktokUrl: string | null;
@@ -356,7 +358,10 @@ export function AdvertPlayer({
             search.matches.map((m) => (
               <div key={m.shopId} className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium">{m.shopName}</p>
+                  <p className="font-medium">
+                    {m.shopName}
+                    {m.verified && <VerifiedBadge />}
+                  </p>
                   <p className="text-zinc-500 dark:text-zinc-400">
                     {m.productName} • Kes {m.priceKes}
                   </p>

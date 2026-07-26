@@ -27,6 +27,8 @@ import {
   adminUnsuspendShopAction,
 } from "@/lib/actions";
 import { isEligibleForDeletion } from "@/lib/suspension";
+import { isVerificationActive } from "@/lib/verification";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { Panel } from "@/components/Panel";
 import { AdminStatNav } from "@/components/dashboard/AdminStatNav";
 import { DataTable } from "@/components/DataTable";
@@ -237,7 +239,10 @@ export default async function AdminPage({
               key: salon.id,
               searchText: `${salon.name} ${salon.centreName} ${salon.owner?.name ?? ""} ${salon.owner?.email ?? ""} ${salon.suspended ? "suspended" : "active"}`,
               cells: [
-                salon.name,
+                <span key="name">
+                  {salon.name}
+                  {isVerificationActive(salon) && <VerifiedBadge />}
+                </span>,
                 salon.centreName,
                 salon.phone,
                 salon.owner?.name ?? salon.owner?.email ?? "—",
@@ -313,7 +318,10 @@ export default async function AdminPage({
               key: shop.id,
               searchText: `${shop.name} ${shop.owner?.name ?? ""} ${shop.owner?.email ?? ""} ${shop.suspended ? "suspended" : "active"}`,
               cells: [
-                shop.name,
+                <span key="name">
+                  {shop.name}
+                  {isVerificationActive(shop) && <VerifiedBadge />}
+                </span>,
                 shop.phone ?? "—",
                 shop.owner?.name ?? shop.owner?.email ?? "—",
                 shop.products.length,
@@ -384,15 +392,30 @@ export default async function AdminPage({
             exportFilename="orders"
             rows={orders.map((order) => {
               const item = order.service ?? order.product;
-              const place = order.service?.salon.name ?? order.product?.shop.name;
+              const placeListing = order.service?.salon ?? order.product?.shop;
               return {
                 key: order.id,
-                searchText: `${item?.name ?? ""} ${order.customer.name ?? ""} ${order.customer.email ?? ""} ${place ?? ""} ${order.status}`,
+                searchText: `${item?.name ?? ""} ${order.customer.name ?? ""} ${order.customer.email ?? ""} ${placeListing?.name ?? ""} ${order.status}`,
                 cells: [
                   `${item?.name ?? "Item removed"}${order.product ? ` × ${order.quantity}` : ""}`,
                   order.customer.name ?? order.customer.email,
-                  place ?? "—",
+                  placeListing ? (
+                    <span key="place">
+                      {placeListing.name}
+                      {isVerificationActive(placeListing) && <VerifiedBadge />}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
                   `Kes ${order.amountKes}`,
+                  order.status,
+                  order.createdAt.toLocaleDateString(),
+                ],
+                values: [
+                  `${item?.name ?? "Item removed"}${order.product ? ` × ${order.quantity}` : ""}`,
+                  order.customer.name ?? order.customer.email,
+                  placeListing?.name ?? "—",
+                  order.amountKes,
                   order.status,
                   order.createdAt.toLocaleDateString(),
                 ],
@@ -648,7 +671,7 @@ export default async function AdminPage({
             </p>
           </div>
           <DataTable
-            headers={["Listing", "Requested by", "Phone", "Status", "Date", "Actions"]}
+            headers={["Listing", "Requested by", "Phone", "Status", "Expires", "Date", "Actions"]}
             searchPlaceholder="Search verification history"
             emptyText="No verification payments yet."
             exportFilename="verification-history"
@@ -656,7 +679,8 @@ export default async function AdminPage({
             rows={verificationRequests.map((request) => {
               const listing = request.salon ?? request.shop;
               const listingType = request.salon ? "salon" : "shop";
-              const verified = listing?.verified ?? false;
+              const active = listing ? isVerificationActive(listing) : false;
+              const expiresAt = listing?.verificationExpiresAt ?? null;
               return {
                 key: request.id,
                 searchText: `${listing?.name ?? ""} ${request.requestedBy.name ?? ""} ${request.requestedBy.email ?? ""} ${request.phone} ${request.status}`,
@@ -669,17 +693,22 @@ export default async function AdminPage({
                   </span>,
                   request.requestedBy.name ?? request.requestedBy.email ?? "—",
                   request.phone,
-                  verified ? (
+                  active ? (
                     <span key="status" className="font-semibold text-purple-600 dark:text-purple-400">
                       Verified
+                    </span>
+                  ) : expiresAt ? (
+                    <span key="status" className="font-semibold text-amber-700 dark:text-amber-400">
+                      Lapsed
                     </span>
                   ) : (
                     <span key="status" className="text-zinc-500 dark:text-zinc-400">
                       Awaiting payment
                     </span>
                   ),
+                  expiresAt ? expiresAt.toLocaleDateString() : "—",
                   request.createdAt.toLocaleDateString(),
-                  verified && listing ? (
+                  active && listing ? (
                     <form key="actions" action={adminRevokeVerificationAction}>
                       <input type="hidden" name="listingType" value={listingType} />
                       <input type="hidden" name="listingId" value={listing.id} />
@@ -698,7 +727,8 @@ export default async function AdminPage({
                   `${listing?.name ?? "—"} (${listingType})`,
                   request.requestedBy.name ?? request.requestedBy.email ?? "—",
                   request.phone,
-                  verified ? "Verified" : "Awaiting payment",
+                  active ? "Verified" : expiresAt ? "Lapsed" : "Awaiting payment",
+                  expiresAt ? expiresAt.toLocaleDateString() : "—",
                   request.createdAt.toLocaleDateString(),
                   "",
                 ],

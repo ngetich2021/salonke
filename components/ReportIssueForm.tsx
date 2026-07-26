@@ -56,16 +56,18 @@ export function ReportIssueForm({
         Your name (optional)
         <input
           name="name"
+          placeholder="John Doe"
           defaultValue={defaultName ?? ""}
           className="rounded border border-black/[.08] px-3 py-2 dark:border-white/[.145] dark:bg-transparent"
         />
       </label>
 
       <label className="flex flex-col gap-1 text-foreground">
-        Your email (optional — only if you want a reply)
+        Your email (optional — we&apos;ll confirm receipt and reply here)
         <input
           name="email"
           type="email"
+          placeholder="johndoe@gmail.com"
           defaultValue={defaultEmail ?? ""}
           className="rounded border border-black/[.08] px-3 py-2 dark:border-white/[.145] dark:bg-transparent"
         />

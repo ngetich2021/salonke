@@ -22,6 +22,7 @@ declare global {
         destroy: () => void;
         mute: () => void;
         unMute: () => void;
+        playVideo: () => void;
         loadVideoById: (videoId: string) => void;
         getPlayerState: () => number;
       };
@@ -86,6 +87,7 @@ export function YouTubePlayer({
     destroy: () => void;
     mute: () => void;
     unMute: () => void;
+    playVideo: () => void;
     loadVideoById: (videoId: string) => void;
     getPlayerState: () => number;
   } | null>(null);
@@ -94,12 +96,14 @@ export function YouTubePlayer({
   // again, so it's safe outside the creation effect's dependency array.
   //
   // AdvertPlayer defaults `muted` to false, so the very first ad of a
-  // session can hit the browser's no-prior-gesture autoplay block. Unlike a
-  // native <video> (see FallbackVideoPlayer's explicit muted-retry),
-  // YouTube's own embed already falls back to a muted autoplay by itself
-  // when that happens, so no equivalent recovery code is needed here — the
-  // player just quietly starts silent until the viewer's first interaction,
-  // same end result via a different, already-provided mechanism.
+  // session can hit the browser's no-prior-gesture autoplay block. A blocked
+  // unmuted autoplay leaves this sitting on the first frame with no visible
+  // way to start it (native controls and clicks are both deliberately
+  // disabled below) — the stall watchdog further down is what actually
+  // recovers it, by muting before its reload retry once a video has gone
+  // genuinely too long without reaching PLAYING (as opposed to just being
+  // slow to buffer, which reaching PLAYING a little late doesn't warrant
+  // muting for).
   const initialRef = useRef({ videoId, muted });
 
   useEffect(() => {
@@ -117,12 +121,53 @@ export function YouTubePlayer({
     }
   }, [muted]);
 
+  // Read in the interaction listener below via a ref (not the `muted` prop
+  // directly) so the listener can stay a single, stable subscription for
+  // the component's whole lifetime instead of re-attaching on every mute
+  // toggle.
+  const mutedRef = useRef(muted);
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
+
+  // Recovers real sound the moment the visitor interacts with the page at
+  // all. The stall watchdog further down force-mutes the player when a
+  // blocked unmuted autoplay would otherwise leave it frozen — but that's a
+  // direct call on the player itself, not a change to AdvertPlayer's own
+  // `muted` state (which stays exactly as the viewer left it), so nothing
+  // else ever tells the player to unmute again once the browser's
+  // user-gesture restriction is actually satisfied.
+  //
+  // This listener stays attached for the component's whole lifetime (not
+  // just the first interaction) because the watchdog can force-mute more
+  // than once in a single session — a backgrounded tab, a network stall, or
+  // (via a full top-level navigation like the Google OAuth round-trip)
+  // this whole component remounting from scratch can each trigger it again
+  // later on. Gated on `mutedRef.current === false` (the viewer's actual,
+  // last-chosen preference) so it only ever recoups a *system*-forced mute
+  // and never fights a deliberate press of the 🔇 button — the guard reads
+  // fresh on every event via the ref above, not a stale closure.
+  useEffect(() => {
+    function onInteraction() {
+      if (mutedRef.current) return;
+      playerRef.current?.unMute();
+      playerRef.current?.playVideo();
+    }
+    window.addEventListener("pointerdown", onInteraction);
+    window.addEventListener("keydown", onInteraction);
+    return () => {
+      window.removeEventListener("pointerdown", onInteraction);
+      window.removeEventListener("keydown", onInteraction);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let player: {
       destroy: () => void;
       mute: () => void;
       unMute: () => void;
+      playVideo: () => void;
       loadVideoById: (videoId: string) => void;
       getPlayerState: () => number;
     } | null = null;
@@ -226,6 +271,16 @@ export function YouTubePlayer({
   // `loadVideoById` used above (the "reentered" retry); if it's still not
   // playing after that, skip to the next ad through the same `onEnded` path
   // used for natural end-of-video — no parallel skip mechanism.
+  //
+  // The reload retry also mutes first. A blocked *unmuted* autoplay is what
+  // this whole 8s-of-non-PLAYING signal most often actually is (ordinary
+  // buffering is essentially never this slow), and reloading with the exact
+  // same unmuted request would just get blocked again — muting first is
+  // what makes the retry actually succeed. Muted state only changes here at
+  // the player level, not through AdvertPlayer's own `muted` state, so the
+  // 🔊 button still shows what the viewer would expect; the pointerdown/
+  // keydown listener above is what restores real sound the moment the
+  // browser's user-gesture requirement is actually satisfied.
   useEffect(() => {
     let sinceMs = Date.now();
     let reloaded = false;
@@ -245,6 +300,7 @@ export function YouTubePlayer({
       if (!reloaded) {
         reloaded = true;
         sinceMs = Date.now();
+        player.mute();
         player.loadVideoById(videoId);
       } else {
         clearInterval(interval);

@@ -10,6 +10,7 @@ import {
 import { getNearbyApprovedAdverts, getNearbyShops } from "@/lib/nearest";
 import { getOwnedShop } from "@/lib/dashboard";
 import { addProductAction } from "@/lib/actions";
+import { isVerificationActive } from "@/lib/verification";
 import { Panel } from "@/components/Panel";
 import { LocationPicker } from "@/components/LocationPicker";
 import { ShopSearchBox } from "@/components/ShopSearchBox";
@@ -51,7 +52,10 @@ export default async function ShopsPage({
       return (
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-10">
           <Panel>
-            <h1 className="text-lg font-semibold">{shop.name}</h1>
+            <h1 className="text-lg font-semibold">
+              {shop.name}
+              {isVerificationActive(shop) && <VerifiedBadge />}
+            </h1>
             {shop.phone && (
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 {shop.phone}
@@ -174,9 +178,9 @@ export default async function ShopsPage({
                     className="flex items-center justify-between gap-3 rounded-xl border border-black/[.08] bg-white p-4 text-sm shadow-sm transition-colors hover:border-foreground/30 dark:border-white/[.145] dark:bg-zinc-900"
                   >
                     <div>
-                      <p className="flex items-center gap-2 font-semibold">
+                      <p className="flex items-center font-semibold">
                         {r.shop.name}
-                        {r.shop.verified && <VerifiedBadge />}
+                        {isVerificationActive(r.shop) && <VerifiedBadge />}
                       </p>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
                         {r.shop.products.length} product{r.shop.products.length === 1 ? "" : "s"}
@@ -209,8 +213,11 @@ export default async function ShopsPage({
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <p className="flex items-center gap-2 text-sm">
-                    <span className="font-semibold">shop:</span> {selected.shop.name}
-                    {selected.shop.verified && <VerifiedBadge />}
+                    <span className="font-semibold">shop:</span>
+                    <span>
+                      {selected.shop.name}
+                      {isVerificationActive(selected.shop) && <VerifiedBadge />}
+                    </span>
                   </p>
                   <ContactIcons tiktokUrl={selected.shop.tiktokUrl} />
                 </div>

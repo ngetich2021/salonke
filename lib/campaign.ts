@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { Advert, Payment } from "@/lib/generated/prisma/client";
 import { initiateStkPush } from "@/lib/mpesa";
@@ -88,6 +89,13 @@ export async function activateOrExtendCampaign(advert: Advert, payment: Payment)
       campaignExpiresAt: new Date(base.getTime() + packageDays * DAY_MS),
     },
   });
+
+  // getApprovedAdverts() caches its result indefinitely under this tag — a
+  // renewal confirmed here changes campaignExpiresAt (what isCampaignLive
+  // reads), and without busting the tag the rotation would keep serving
+  // whatever expiry was last cached instead of the just-extended one, the
+  // same stale-cache gap renewAdCampaignAction itself was fixed for.
+  revalidateTag("approved-adverts", { expire: 0 });
 }
 
 // An advert with no campaignExpiresAt at all is grandfathered (created

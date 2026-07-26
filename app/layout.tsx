@@ -5,10 +5,10 @@ import "./globals.css";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { GlobalAdReel } from "@/components/GlobalAdReel";
+import { HideOnAuthPages } from "@/components/HideOnAuthPages";
 import { InactivityLogout } from "@/components/InactivityLogout";
 import { VisitTracker } from "@/components/VisitTracker";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
-import { InstallAppButton } from "@/components/InstallAppButton";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,7 +51,6 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
-        <InstallAppButton />
         <InactivityLogout />
         <Suspense fallback={null}>
           <VisitTracker />
@@ -62,9 +61,11 @@ export default function RootLayout({
             scroll — position:sticky is bound to its parent's box, and body
             spans the whole page. See AdvertPlayer for the split into a
             sticky strip + normal-flow panel underneath it. */}
-        <Suspense fallback={null}>
-          <GlobalAdReel />
-        </Suspense>
+        <HideOnAuthPages>
+          <Suspense fallback={null}>
+            <GlobalAdReel />
+          </Suspense>
+        </HideOnAuthPages>
         <main className="flex flex-1 flex-col">{children}</main>
         <Footer />
       </body>

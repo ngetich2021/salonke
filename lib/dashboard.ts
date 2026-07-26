@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { haversineKm } from "@/lib/geo";
+import { isVerificationActive } from "@/lib/verification-shared";
 
 export async function getCustomerOrders(customerId: string) {
   return prisma.order.findMany({
@@ -139,6 +140,7 @@ export async function getLatestVerificationRequest({
   return prisma.verificationRequest.findFirst({
     where: salonId ? { salonId } : { shopId },
     orderBy: { createdAt: "desc" },
+    include: { payment: { select: { status: true } } },
   });
 }
 
@@ -204,7 +206,14 @@ export async function getAdvertCampaignStats(advertId: string, ownerId: string) 
 
   const byShop = new Map<
     string,
-    { shopId: string; shopName: string; latitude: number; longitude: number; orderCount: number }
+    {
+      shopId: string;
+      shopName: string;
+      verified: boolean;
+      latitude: number;
+      longitude: number;
+      orderCount: number;
+    }
   >();
   for (const order of orders) {
     const shop = order.product?.shop;
@@ -212,6 +221,7 @@ export async function getAdvertCampaignStats(advertId: string, ownerId: string) 
     const entry = byShop.get(shop.id) ?? {
       shopId: shop.id,
       shopName: shop.name,
+      verified: isVerificationActive(shop),
       latitude: shop.latitude,
       longitude: shop.longitude,
       orderCount: 0,
@@ -224,6 +234,7 @@ export async function getAdvertCampaignStats(advertId: string, ownerId: string) 
     .map((s) => ({
       shopId: s.shopId,
       shopName: s.shopName,
+      verified: s.verified,
       orderCount: s.orderCount,
       distanceKm:
         advert.owner.latitude != null && advert.owner.longitude != null

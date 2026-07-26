@@ -1,4 +1,5 @@
 import { getAdvertCampaignStats } from "@/lib/dashboard";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 // A dressed-up "brand portal" view of a single live campaign — real numbers
 // throughout (no fabricated ad-spend/ROAS figure, since this app has no
@@ -57,6 +58,7 @@ export async function CampaignPerformance({
             {attribution.map((a) => (
               <li key={a.shopId}>
                 • {a.shopName}
+                {a.verified && <VerifiedBadge />}
                 {a.distanceKm != null && ` (${a.distanceKm.toFixed(1)}km away)`}: {a.orderCount} order
                 {a.orderCount === 1 ? "" : "s"} driven by this ad
               </li>

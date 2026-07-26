@@ -26,7 +26,7 @@ import { extractYouTubeId } from "@/lib/youtube";
 import { sendMail } from "@/lib/mail";
 import { runAfterResponse } from "@/lib/jobs";
 import { chargeAdCampaign, activateOrExtendCampaign } from "@/lib/campaign";
-import { chargeVerification } from "@/lib/verification";
+import { chargeVerification, isVerificationActive } from "@/lib/verification";
 import { queryStkStatus } from "@/lib/mpesa";
 import { applyStkResult } from "@/lib/payments";
 import type { Role } from "@/lib/generated/prisma/client";
@@ -473,6 +473,7 @@ export async function updateOrderStatusAction(formData: FormData) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
+      customer: true,
       service: { include: { salon: true } },
       product: { include: { shop: true } },
     },
@@ -498,6 +499,29 @@ export async function updateOrderStatusAction(formData: FormData) {
     where: { id: orderId },
     data: { status: status as (typeof ASSIGNABLE_STATUSES)[number] },
   });
+
+  // Order flow has no online checkout — "COMPLETED" means the salon/shop has
+  // fulfilled it and payment happens off-platform (cash/M-Pesa direct to
+  // them), same as the "Pay Kes X to {place}" notice CustomerOrders already
+  // shows in-app (components/dashboard/CustomerOrders.tsx). Email is a
+  // best-effort nudge for a customer who isn't watching the page when that
+  // happens; deferred like the advert-approval email above so a slow/failed
+  // SMTP send never blocks this action.
+  if (status === "COMPLETED" && order.customer.email) {
+    const to = order.customer.email;
+    const itemName = order.service?.name ?? order.product?.name ?? "your order";
+    const placeName = order.service?.salon.name ?? order.product?.shop.name ?? "the salon/shop";
+    const amountKes = order.amountKes;
+    runAfterResponse(
+      () =>
+        sendMail({
+          to,
+          subject: "Your order is complete — payment due",
+          text: `Your order for "${itemName}" has been completed. Please pay Kes ${amountKes} to ${placeName} to settle it.`,
+        }),
+      "order-completed-email"
+    );
+  }
 
   revalidatePath("/account");
   revalidatePath("/admin");
@@ -922,6 +946,7 @@ export async function findShopsForAdvertAction(
     matches: matches.map((m) => ({
       shopId: m.shop.id,
       shopName: m.shop.name,
+      verified: isVerificationActive(m.shop),
       phone: m.shop.phone,
       whatsappNumber: m.shop.whatsappNumber,
       tiktokUrl: m.shop.tiktokUrl,
@@ -1160,18 +1185,24 @@ export async function requestVerificationAction(formData: FormData) {
   if (!listing) {
     throw new Error(`You don't own a ${listingType}`);
   }
-  if (listing.verified) {
-    throw new Error("This listing is already verified");
-  }
-
+  // Deliberately no "already verified" block — verification is a recurring
+  // monthly charge (see VERIFICATION_PERIOD_DAYS in lib/verification.ts), so
+  // paying again while already verified is a normal renewal, not a
+  // duplicate. Only an actual payment still in flight (PENDING) blocks a new
+  // one — VerificationRequest.status itself is a poor proxy for that: it's
+  // only ever flipped to APPROVED on success (markVerificationPaymentPaid),
+  // never back off AWAITING_PAYMENT when the STK push fails or is cancelled,
+  // so gating on request.status alone would lock a listing out of retrying
+  // forever after one failed attempt.
   const existing = await prisma.verificationRequest.findFirst({
     where: {
       [listingType === "salon" ? "salonId" : "shopId"]: listing.id,
-      status: { in: ["AWAITING_PAYMENT", "PENDING"] },
+      status: "AWAITING_PAYMENT",
     },
+    include: { payment: true },
   });
-  if (existing) {
-    throw new Error("A verification request for this listing is already in progress");
+  if (existing && existing.payment.status === "PENDING") {
+    throw new Error("A verification payment for this listing is already in progress");
   }
 
   const { paymentId } = await chargeVerification({
@@ -1198,10 +1229,11 @@ export async function adminRevokeVerificationAction(formData: FormData) {
     throw new Error("Invalid listing");
   }
 
+  const data = { verified: false, verificationExpiresAt: null };
   if (listingType === "salon") {
-    await prisma.salon.update({ where: { id: listingId }, data: { verified: false } });
+    await prisma.salon.update({ where: { id: listingId }, data });
   } else {
-    await prisma.shop.update({ where: { id: listingId }, data: { verified: false } });
+    await prisma.shop.update({ where: { id: listingId }, data });
   }
 
   revalidatePath("/admin");
@@ -1225,15 +1257,34 @@ export async function submitIssueReportAction(formData: FormData): Promise<{ suc
     throw new Error(parsed.error.issues[0]?.message ?? "Invalid report");
   }
 
+  const name = parsed.data.name || current?.user?.name || null;
+  const email = parsed.data.email || current?.user?.email || null;
+
   await prisma.issueReport.create({
     data: {
       reporterId: current?.user?.id ?? null,
-      name: parsed.data.name || current?.user?.name || null,
-      email: parsed.data.email || current?.user?.email || null,
+      name,
+      email,
       message: parsed.data.message,
       pageUrl: parsed.data.pageUrl || null,
     },
   });
+
+  // Best-effort receipt confirmation — deferred past the response so a slow
+  // or failed SMTP round-trip never delays the "report sent" confirmation
+  // the reporter sees, and never turns a successfully-saved report into an
+  // error just because the email side hiccuped.
+  if (email) {
+    runAfterResponse(
+      () =>
+        sendMail({
+          to: email,
+          subject: "We received your report",
+          text: `Hi${name ? ` ${name}` : ""},\n\nThanks for reporting an issue with SalonKE — we've received it and will look into it:\n\n"${parsed.data.message}"\n\nWe'll reply here if we need more details or once it's resolved.`,
+        }),
+      "issue-report-received-email"
+    );
+  }
 
   return { success: true };
 }

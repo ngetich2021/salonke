@@ -3,6 +3,7 @@ import { ContactIcons } from "@/components/ContactIcons";
 import { Photo } from "@/components/Photo";
 import { PhoneButton } from "@/components/PhoneButton";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { isVerificationActive } from "@/lib/verification";
 
 export function SalonCard({
   salon,
@@ -36,8 +37,11 @@ export function SalonCard({
             </p>
           )}
           <p className="flex items-center gap-2">
-            <span className="font-semibold">salon:</span> {salon.name}
-            {salon.verified && <VerifiedBadge />}
+            <span className="font-semibold">salon:</span>
+            <span>
+              {salon.name}
+              {isVerificationActive(salon) && <VerifiedBadge />}
+            </span>
           </p>
           <p>
             <span className="font-semibold">centre:</span> {salon.centreName}

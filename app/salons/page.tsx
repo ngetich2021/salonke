@@ -7,6 +7,8 @@ import { addServiceAction } from "@/lib/actions";
 import { Panel } from "@/components/Panel";
 import { LocationPicker } from "@/components/LocationPicker";
 import { SalonCard } from "@/components/SalonCard";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { isVerificationActive } from "@/lib/verification";
 import { ResultCountForm } from "@/components/ResultCountForm";
 import { ListPager } from "@/components/ListPager";
 import { LinkSpinner } from "@/components/LinkSpinner";
@@ -42,7 +44,10 @@ export default async function SalonsPage({
       return (
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-10">
           <Panel>
-            <h1 className="text-lg font-semibold">{salon.name}</h1>
+            <h1 className="text-lg font-semibold">
+              {salon.name}
+              {isVerificationActive(salon) && <VerifiedBadge />}
+            </h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               {salon.centreName} • {salon.phone}
             </p>
@@ -159,7 +164,10 @@ export default async function SalonsPage({
                     className="flex items-center justify-between gap-3 rounded-xl border border-black/[.08] bg-white p-4 text-sm shadow-sm transition-colors hover:border-foreground/30 dark:border-white/[.145] dark:bg-zinc-900"
                   >
                     <div>
-                      <p className="font-semibold">{r.salon.name}</p>
+                      <p className="font-semibold">
+                        {r.salon.name}
+                        {isVerificationActive(r.salon) && <VerifiedBadge />}
+                      </p>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
                         {r.salon.centreName} • {r.salon.services.length} service
                         {r.salon.services.length === 1 ? "" : "s"}

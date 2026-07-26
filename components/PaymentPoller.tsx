@@ -9,9 +9,14 @@ const TIMEOUT_MS = 90000;
 export function PaymentPoller({
   paymentId,
   onSuccess,
+  onSettle,
 }: {
   paymentId: string;
   onSuccess?: () => void;
+  // Fired for every terminal-ish state (failed/timeout too, not just
+  // success) so callers can offer a retry once it's clear this attempt
+  // isn't going to resolve on its own.
+  onSettle?: (state: "success" | "failed" | "timeout") => void;
 }) {
   const [state, setState] = useState<"pending" | "success" | "failed" | "timeout">("pending");
 
@@ -27,10 +32,12 @@ export function PaymentPoller({
         if (status === "SUCCESS") {
           setState("success");
           onSuccess?.();
+          onSettle?.("success");
           return;
         }
         if (status === "FAILED") {
           setState("failed");
+          onSettle?.("failed");
           return;
         }
       } catch {
@@ -38,6 +45,7 @@ export function PaymentPoller({
       }
       if (Date.now() - startedAt >= TIMEOUT_MS) {
         setState("timeout");
+        onSettle?.("timeout");
         return;
       }
       setTimeout(poll, POLL_INTERVAL_MS);

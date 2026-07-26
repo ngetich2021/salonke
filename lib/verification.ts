@@ -1,29 +1,58 @@
+import { revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import type { Payment } from "@/lib/generated/prisma/client";
 import { initiateStkPush } from "@/lib/mpesa";
 import { VERIFICATION_FEE_KES } from "@/lib/pricing";
+import { VERIFICATION_PERIOD_DAYS } from "@/lib/verification-shared";
+
+export { VERIFICATION_PERIOD_DAYS, isVerificationActive } from "@/lib/verification-shared";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Called once a Payment(purpose: VERIFICATION) is confirmed SUCCESS —
 // payment IS verification here, no document or admin review step. Flips the
-// linked VerificationRequest straight to APPROVED and sets `verified` on
-// whichever salon/shop it was for in the same transaction, so the badge and
-// the request's own status change atomically together.
+// linked VerificationRequest straight to APPROVED and extends
+// verificationExpiresAt by one period on whichever salon/shop it was for,
+// in the same transaction, so the badge and the request's own status
+// change atomically together. Extends from the current expiry (not from
+// now) when it's still in the future, same reasoning as
+// activateOrExtendCampaign: an early renewal should never waste days that
+// were already paid for and not yet used.
 export async function markVerificationPaymentPaid(payment: Payment) {
   if (payment.purpose !== "VERIFICATION") return;
 
   const request = await prisma.verificationRequest.findUnique({ where: { paymentId: payment.id } });
   if (!request || request.status !== "AWAITING_PAYMENT") return;
 
-  const verifiedAt = new Date();
+  const now = new Date();
+  const listing = request.salonId
+    ? await prisma.salon.findUnique({ where: { id: request.salonId } })
+    : await prisma.shop.findUnique({ where: { id: request.shopId! } });
+
+  const base =
+    listing?.verificationExpiresAt && new Date(listing.verificationExpiresAt) > now
+      ? new Date(listing.verificationExpiresAt)
+      : now;
+  const verificationExpiresAt = new Date(base.getTime() + VERIFICATION_PERIOD_DAYS * DAY_MS);
+  const data = { verified: true, verifiedAt: listing?.verifiedAt ?? now, verificationExpiresAt };
+
   await prisma.$transaction([
     prisma.verificationRequest.update({
       where: { id: request.id },
-      data: { status: "APPROVED", reviewedAt: verifiedAt },
+      data: { status: "APPROVED", reviewedAt: now },
     }),
     request.salonId
-      ? prisma.salon.update({ where: { id: request.salonId }, data: { verified: true, verifiedAt } })
-      : prisma.shop.update({ where: { id: request.shopId! }, data: { verified: true, verifiedAt } }),
+      ? prisma.salon.update({ where: { id: request.salonId }, data })
+      : prisma.shop.update({ where: { id: request.shopId! }, data }),
   ]);
+
+  // getNearbySalons/getNearbyShops (lib/nearest.ts) cache the full listing
+  // arrays indefinitely under these tags — without busting them here, a
+  // renewal confirmed by this webhook would update the row in the database
+  // but the public badge would keep showing whatever verified/expiry state
+  // was last cached, same stale-cache trap renewAdCampaignAction had for
+  // ad campaigns before that was fixed to revalidate on its own write.
+  revalidateTag(request.salonId ? "salons" : "shops", { expire: 0 });
 }
 
 // Creates the VerificationRequest + its Payment row together (the request

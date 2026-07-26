@@ -61,6 +61,48 @@ export function FallbackVideoPlayer({
     // swaps in the effect below play unmuted without issue.
   }, []);
 
+  // Read in the interaction listener below via a ref (not the `muted` prop
+  // directly) so the listener can stay a single, stable subscription for
+  // the component's whole lifetime instead of re-attaching on every mute
+  // toggle.
+  const mutedRef = useRef(muted);
+  useEffect(() => {
+    mutedRef.current = muted;
+  }, [muted]);
+
+  // Recovers real sound the moment the visitor interacts with the page at
+  // all. The two direct `video.muted = true` fallbacks above and in
+  // handleStall below force-mute the element itself when a blocked
+  // unmuted autoplay would otherwise leave it frozen — but that's outside
+  // AdvertPlayer's own `muted` state (which stays exactly as the viewer
+  // left it), so nothing else ever tells the element to unmute again once
+  // the browser's user-gesture restriction is actually satisfied.
+  //
+  // Stays attached for the component's whole lifetime (not just the first
+  // interaction) because a stall — and the force-mute that follows it —
+  // can happen more than once in a single session (a backgrounded tab, a
+  // network hiccup, or a full top-level navigation like the Google OAuth
+  // round-trip remounting this component from scratch). Gated on
+  // `mutedRef.current === false` (the viewer's actual, last-chosen
+  // preference), read fresh via the ref on every event, so this only ever
+  // recoups a *system*-forced mute and never fights a deliberate press of
+  // the 🔇 button.
+  useEffect(() => {
+    function onInteraction() {
+      if (mutedRef.current) return;
+      const video = videoRef.current;
+      if (!video) return;
+      video.muted = false;
+      video.play().catch(() => {});
+    }
+    window.addEventListener("pointerdown", onInteraction);
+    window.addEventListener("keydown", onInteraction);
+    return () => {
+      window.removeEventListener("pointerdown", onInteraction);
+      window.removeEventListener("keydown", onInteraction);
+    };
+  }, []);
+
   // Skips the initial mount (the `src` attribute + `autoPlay` below already
   // handle that first play) and, on every subsequent advance, plays the
   // current `src` in the SAME <video> element instead of remounting it —
@@ -84,15 +126,24 @@ export function FallbackVideoPlayer({
   }, [playKey]);
 
   // First stall/wait/error for this src: reload it in place (the "reentered"
-  // retry). A second one — or continued silent non-progress caught by the
-  // watchdog below — skips to the next ad via the same path AdvertPlayer
-  // already uses for natural end-of-video.
+  // retry), muting first. 8 seconds of no progress is most often a blocked
+  // *unmuted* autoplay (ordinary buffering is essentially never this slow),
+  // and reloading with the exact same unmuted request would just get
+  // blocked again — muting first is what makes the retry actually succeed.
+  // Only at the element level, not AdvertPlayer's own `muted` state, so the
+  // 🔊 button still shows what the viewer would expect; the pointerdown/
+  // keydown listener above is what restores real sound once the browser's
+  // user-gesture requirement is actually satisfied. A second stall — or
+  // continued silent non-progress caught by the watchdog below — skips to
+  // the next ad via the same path AdvertPlayer already uses for natural
+  // end-of-video.
   function handleStall() {
     if (!reloadedRef.current) {
       reloadedRef.current = true;
       lastProgressRef.current = Date.now();
       const video = videoRef.current;
       if (video) {
+        video.muted = true;
         video.currentTime = 0;
         video.load();
         video.play().catch(() => {});

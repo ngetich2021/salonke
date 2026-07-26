@@ -30,6 +30,8 @@ import { Modal } from "@/components/Modal";
 import { ImageFileInput } from "@/components/ImageFileInput";
 import { AccountSettings } from "@/components/AccountSettings";
 import { VerificationSettings, type VerificationListing } from "@/components/VerificationSettings";
+import { isVerificationActive } from "@/lib/verification";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { AccountTabs } from "@/components/AccountTabs";
 import { CreateListingModal } from "@/components/CreateListingModal";
 import { CreateAdvertModal } from "@/components/CreateAdvertModal";
@@ -116,9 +118,14 @@ export default async function AccountPage({
             type: "salon" as const,
             id: ownedSalon.id,
             name: ownedSalon.name,
-            verified: ownedSalon.verified,
-            verifiedAt: ownedSalon.verifiedAt,
-            awaitingPayment: latestSalonRequest?.status === "AWAITING_PAYMENT",
+            active: isVerificationActive(ownedSalon),
+            verificationExpiresAt: ownedSalon.verificationExpiresAt,
+            awaitingPayment:
+              latestSalonRequest?.status === "AWAITING_PAYMENT" &&
+              latestSalonRequest.payment.status === "PENDING",
+            paymentFailed:
+              latestSalonRequest?.status === "AWAITING_PAYMENT" &&
+              latestSalonRequest.payment.status === "FAILED",
           },
         ]
       : []),
@@ -128,9 +135,14 @@ export default async function AccountPage({
             type: "shop" as const,
             id: ownedShop.id,
             name: ownedShop.name,
-            verified: ownedShop.verified,
-            verifiedAt: ownedShop.verifiedAt,
-            awaitingPayment: latestShopRequest?.status === "AWAITING_PAYMENT",
+            active: isVerificationActive(ownedShop),
+            verificationExpiresAt: ownedShop.verificationExpiresAt,
+            awaitingPayment:
+              latestShopRequest?.status === "AWAITING_PAYMENT" &&
+              latestShopRequest.payment.status === "PENDING",
+            paymentFailed:
+              latestShopRequest?.status === "AWAITING_PAYMENT" &&
+              latestShopRequest.payment.status === "FAILED",
           },
         ]
       : []),
@@ -201,7 +213,10 @@ export default async function AccountPage({
             (ownedSalon ? (
               <Panel className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-sm font-semibold">{ownedSalon.name}</h2>
+                  <h2 className="text-sm font-semibold">
+                    {ownedSalon.name}
+                    {isVerificationActive(ownedSalon) && <VerifiedBadge />}
+                  </h2>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     {ownedSalon.centreName} • {ownedSalon.phone}
                   </p>
@@ -270,7 +285,10 @@ export default async function AccountPage({
             (ownedShop ? (
               <Panel className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-sm font-semibold">{ownedShop.name}</h2>
+                  <h2 className="text-sm font-semibold">
+                    {ownedShop.name}
+                    {isVerificationActive(ownedShop) && <VerifiedBadge />}
+                  </h2>
                   {ownedShop.phone && (
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {ownedShop.phone}

@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getDrivingDistanceKm, haversineKm } from "@/lib/geo";
 import { isCampaignLive } from "@/lib/campaign";
+import { isVerificationActive } from "@/lib/verification-shared";
 
 // Raw table fetches shared by the nearest-salon/shop lookups below (and, for
 // shops, the advert-to-shop matcher) — cached because they're identical for
@@ -84,6 +85,46 @@ async function rankNearest<T>(
   return [...rerankedSorted, ...tailMapped];
 }
 
+// A verified listing is only let ahead of a nearer unverified one when the
+// two are genuinely comparable distances apart — jumping a verified salon
+// several km ahead of a closer unverified one would be an unfair reordering
+// the customer never asked for, not a helpful prioritization. "Comparable"
+// is this many km: a verified listing can move ahead of an unverified one
+// immediately in front of it only if the gap between them is within this
+// tolerance.
+const VERIFIED_PRIORITY_TOLERANCE_KM = 0.5;
+
+// Bubbles each verified item forward past any immediately-preceding
+// unverified items that are within tolerance, stopping at the first
+// unverified item that's meaningfully closer (or at another verified item,
+// whose relative order is left as pure distance already gave it). Bounded
+// by result-set size (<= MAX_RESULT_LIMIT), so the O(n^2) worst case here is
+// negligible.
+function withVerifiedPriority<T>(
+  ranked: { item: T; distanceKm: number; isDrivingDistance: boolean }[],
+  isVerified: (item: T) => boolean
+) {
+  const result = [...ranked];
+  let swapped = true;
+  while (swapped) {
+    swapped = false;
+    for (let i = 0; i < result.length - 1; i++) {
+      const a = result[i];
+      const b = result[i + 1];
+      if (
+        !isVerified(a.item) &&
+        isVerified(b.item) &&
+        b.distanceKm - a.distanceKm <= VERIFIED_PRIORITY_TOLERANCE_KM
+      ) {
+        result[i] = b;
+        result[i + 1] = a;
+        swapped = true;
+      }
+    }
+  }
+  return result;
+}
+
 export async function getNearbySalons(lat: number, lng: number, limit = 1) {
   const salons = await getAllSalonsWithServices();
   const withServices = salons.filter((salon) => !salon.suspended && salon.services.length > 0);
@@ -96,8 +137,9 @@ export async function getNearbySalons(lat: number, lng: number, limit = 1) {
     (salon) => ({ latitude: salon.latitude, longitude: salon.longitude }),
     limit
   );
+  const prioritized = withVerifiedPriority(ranked, (salon) => isVerificationActive(salon));
 
-  return ranked.map((r) => ({
+  return prioritized.map((r) => ({
     salon: r.item,
     distanceKm: r.distanceKm,
     isDrivingDistance: r.isDrivingDistance,
@@ -124,8 +166,9 @@ export async function getNearbyShops(lat: number, lng: number, query?: string, l
     (shop) => ({ latitude: shop.latitude, longitude: shop.longitude }),
     limit
   );
+  const prioritized = withVerifiedPriority(ranked, (shop) => isVerificationActive(shop));
 
-  return ranked.map((r) => ({
+  return prioritized.map((r) => ({
     shop: r.item,
     distanceKm: r.distanceKm,
     isDrivingDistance: r.isDrivingDistance,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { recordAdvertShareAction } from "@/lib/actions";
 
 // navigator.share only exists in the browser and never changes after load,
@@ -104,6 +104,29 @@ export function ShareButtons({
   );
   const [copied, setCopied] = useState(false);
   const [justShared, setJustShared] = useState<PlatformKey | null>(null);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Closes the platform menu on an outside click/tap or Escape — only
+  // wired up while it's actually open, so this never listens on every
+  // instance of this component rendered across a page of ads.
+  useEffect(() => {
+    if (!open) return;
+    function onOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [open]);
 
   function celebrate(platform: PlatformKey) {
     setJustShared(platform);
@@ -143,43 +166,78 @@ export function ShareButtons({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-foreground/20 p-3">
-      <p className="text-xs font-semibold">📤 Share this ad — spread the word!</p>
-      <div className="flex flex-wrap items-center gap-2">
-        {canNativeShare && (
-          <button
-            type="button"
-            onClick={handleNativeShare}
-            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-transform hover:scale-105"
-          >
-            {justShared === "native" ? (
-              "🎉 Shared!"
-            ) : (
-              <>
-                <ShareGlyph /> Share
-              </>
-            )}
-          </button>
-        )}
-        {PLATFORMS.map(({ key, label, Icon, className }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => handlePlatform(key)}
-            aria-label={`Share on ${label}`}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-transform hover:scale-105 ${className}`}
-          >
-            {justShared === key ? "🎉" : <Icon />} {label}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium transition-transform hover:scale-105 dark:border-white/[.145]"
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Share this ad"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center justify-center rounded-full border border-black/[.08] bg-white p-2 text-foreground shadow-sm transition-transform hover:scale-105 dark:border-white/[.145] dark:bg-zinc-900"
+      >
+        <ShareGlyph />
+      </button>
+
+      {(copied || justShared) && (
+        <span className="absolute left-1/2 top-full z-20 mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-medium text-background shadow">
+          {copied ? "✅ Copied!" : "🎉 Shared!"}
+        </span>
+      )}
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-full z-20 mt-2 flex w-44 flex-col gap-0.5 rounded-lg border border-black/[.08] bg-white p-1.5 shadow-lg dark:border-white/[.145] dark:bg-zinc-900"
         >
-          {copied ? "✅ Copied!" : "🔗 Copy link"}
-        </button>
-      </div>
+          {canNativeShare && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                handleNativeShare();
+              }}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-black/[.04] dark:hover:bg-white/[.08]"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 text-white">
+                <ShareGlyph />
+              </span>
+              Share…
+            </button>
+          )}
+          {PLATFORMS.map(({ key, label, Icon, className }) => (
+            <button
+              key={key}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                handlePlatform(key);
+              }}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-black/[.04] dark:hover:bg-white/[.08]"
+            >
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full ${className}`}>
+                <Icon />
+              </span>
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              handleCopy();
+            }}
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-black/[.04] dark:hover:bg-white/[.08]"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-black/[.08] dark:border-white/[.145]">
+              🔗
+            </span>
+            Copy link
+          </button>
+        </div>
+      )}
     </div>
   );
 }

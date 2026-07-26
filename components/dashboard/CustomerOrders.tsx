@@ -4,6 +4,8 @@ import { updateOrderQuantityAction } from "@/lib/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { OrderStatusActions } from "@/components/dashboard/OrderStatusActions";
 import { DataTable } from "@/components/DataTable";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { isVerificationActive } from "@/lib/verification";
 import type { OrderStatus } from "@/lib/generated/prisma/client";
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -20,7 +22,12 @@ export async function CustomerOrders({ customerId }: { customerId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold">Your orders</h2>
+        <div>
+          <h2 className="text-sm font-semibold">Personal orders</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Orders you placed as a customer at other salons/shops.
+          </p>
+        </div>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
           Completed: <span className="font-semibold text-foreground">{completedOrdersCount}</span>
           {" · "}
@@ -34,7 +41,8 @@ export async function CustomerOrders({ customerId }: { customerId: string }) {
         exportFilename="my-orders"
         rows={orders.map((order) => {
           const item = order.service ?? order.product;
-          const place = order.service?.salon.name ?? order.product?.shop.name;
+          const placeListing = order.service?.salon ?? order.product?.shop;
+          const place = placeListing?.name;
           const whatsappNumber =
             order.service?.salon.whatsappNumber ?? order.product?.shop.whatsappNumber;
           const phone = order.service?.salon.phone ?? order.product?.shop.phone;
@@ -49,7 +57,14 @@ export async function CustomerOrders({ customerId }: { customerId: string }) {
                 {item?.name ?? "Item removed"}
                 {order.product && ` × ${order.quantity}`}
               </span>,
-              place ?? "—",
+              placeListing ? (
+                <span key="place">
+                  {placeListing.name}
+                  {isVerificationActive(placeListing) && <VerifiedBadge />}
+                </span>
+              ) : (
+                "—"
+              ),
               `Kes ${order.amountKes}`,
               <div key="status" className="flex flex-col gap-1">
                 <span>{STATUS_LABELS[order.status]}</span>

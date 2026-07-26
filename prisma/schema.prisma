@@ -115,11 +115,16 @@ model Salon {
   // search (getNearbySalons) but remain visible to their owner.
   suspended      Boolean   @default(false)
   suspendedAt    DateTime?
-  // Set once an admin approves a paid VerificationRequest for this listing
-  // (see lib/verification.ts) — shown as a badge to customers. Independent
-  // of suspended: a verified listing can still be suspended, and vice versa.
-  verified       Boolean   @default(false)
-  verifiedAt     DateTime?
+  // A paid, recurring monthly badge (see lib/verification.ts) — `verified`
+  // flips true the moment a payment confirms and is never separately
+  // cleared on expiry; whether the badge is actually eligible to *show* is
+  // computed on read (isVerificationActive) by comparing
+  // verificationExpiresAt to now, the same on-read-rather-than-cron
+  // approach isCampaignLive uses for ad campaigns. Independent of
+  // suspended: a verified listing can still be suspended, and vice versa.
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime?
+  verificationExpiresAt DateTime?
   createdAt      DateTime  @default(now())
 
   owner                User?                 @relation("SalonOwner", fields: [ownerId], references: [id], onDelete: SetNull)
@@ -153,9 +158,10 @@ model Shop {
   // See Salon.suspended above — same admin suspend/unsuspend-only lifecycle.
   suspended      Boolean   @default(false)
   suspendedAt    DateTime?
-  // See Salon.verified above — same paid-verification lifecycle.
-  verified       Boolean   @default(false)
-  verifiedAt     DateTime?
+  // See Salon.verified above — same paid, recurring, computed-on-read lifecycle.
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime?
+  verificationExpiresAt DateTime?
   createdAt      DateTime  @default(now())
 
   owner                User?                 @relation("ShopOwner", fields: [ownerId], references: [id], onDelete: SetNull)
