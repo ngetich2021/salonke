@@ -187,7 +187,7 @@ export function ShareButtons({
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full z-20 mt-2 flex w-44 flex-col gap-0.5 rounded-lg border border-black/[.08] bg-white p-1.5 shadow-lg dark:border-white/[.145] dark:bg-zinc-900"
+          className="absolute left-0 top-full z-30 mt-2 flex w-44 flex-col gap-0.5 rounded-lg border border-black/[.08] bg-white p-1.5 shadow-lg dark:border-white/[.145] dark:bg-zinc-900"
         >
           {canNativeShare && (
             <button

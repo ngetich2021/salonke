@@ -264,22 +264,24 @@ export function AdvertPlayer({
 
   const engagement = (
     <>
-      <ShareButtons key={current.id} advertId={current.id} productName={current.productName} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ShareButtons key={current.id} advertId={current.id} productName={current.productName} />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={handleFindShops}
-          className="self-start rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background"
-        >
-          👍 Interested — find shops
-        </button>
-        {current.phone && (
-          <PhoneButton
-            phone={current.phone}
-            className="self-start rounded-full border border-black/[.08] px-4 py-1.5 text-xs font-medium dark:border-white/[.145]"
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleFindShops}
+            className="self-start rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background"
+          >
+            👍 Interested — find shops
+          </button>
+          {current.phone && (
+            <PhoneButton
+              phone={current.phone}
+              className="self-start rounded-full border border-black/[.08] px-4 py-1.5 text-xs font-medium dark:border-white/[.145]"
+            />
+          )}
+        </div>
       </div>
 
       {askingLocation && (
